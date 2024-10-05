@@ -3,6 +3,25 @@ uuid = "dfcbb648-3ed2-4b77-96ff-e290b72d63c5"
 authors = ["Ansaar Dollie <me@ansaardollie.com>"]
 version = "1.0.0-DEV"
 
+[deps]
+AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+AlgebraOfGraphics = "cbdf2221-f076-402e-a563-3d30da359d67"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
+CategoricalDistributions = "af321ab8-2d2e-40a6-b165-3d674595d28e"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+GraphMakie = "1ecd5474-83a3-4783-bb4f-06765db800d2"
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+MLJModelInterface = "e80e1ace-859a-464e-9ed9-23947d8ae3ea"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+NetworkLayout = "46757867-2c16-5918-afeb-47bfcb05e46a"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StatisticalMeasures = "a19d573c-0a75-4610-95b3-7071388c7541"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+
 [compat]
 julia = "1.10"
 
