@@ -59,7 +59,7 @@ function evolve(
   kwargs...
 )
   metric_type = get(kwargs, :metric_type, InformednessFitness)
-  metric = get(kwargs, :metric, metric_function(trees[1], metric_type))
+  metric = get(kwargs, :metric, metric_function(metric_type))
   maxdepth = get(kwargs, :maxdepth, trees[1].maxdepth)
   target = get(kwargs, :target, LeafLabel)
   penalty = get(kwargs, :penalty, DepthPenalty)
@@ -68,7 +68,6 @@ function evolve(
   num_mutations = get(kwargs, :num_mutations, 1)
   eliteprop = get(kwargs, :eliteprop, 0.3)
   seed = get(kwargs, :seed, nothing)
-  verbose = get(kwargs, :verbose, false)
   if !isnothing(seed)
     Random.seed!(seed)
   end
@@ -130,6 +129,7 @@ function train(
   kwargs...
 )
   max_generations_stagnant = get(kwargs, :max_generations_stagnant, Int(floor(generations * 0.2)))
+  verbosity = get(kwargs, :verbosity, 1)
   current_population = trees
   fitness_history = Vector{Float64}()
 
@@ -138,28 +138,52 @@ function train(
   num_generations_evolved = 0
   current_best_fitness = 0
 
-  @showprogress desc = "Training..." barglyphs = BarGlyphs("[=> ]") for i in 1:generations
-    num_generations_evolved += 1
-    offspring, best_fitness, best_tree = evolve(current_population; kwargs...)
-    if i == 1
-      current_best_fitness = best_fitness
-    end
-    current_population = offspring
-    push!(fitness_history, best_fitness)
+  if verbosity == 0
+    for i in 1:generations
+      num_generations_evolved += 1
+      offspring, best_fitness, best_tree = evolve(current_population; kwargs...)
+      if i == 1
+        current_best_fitness = best_fitness
+      end
+      current_population = offspring
+      push!(fitness_history, best_fitness)
 
-    if prevfitness >= best_fitness
-      num_stagnant_generations += 1
-    else
-      num_stagnant_generations = 0
-    end
+      if prevfitness >= best_fitness
+        num_stagnant_generations += 1
+      else
+        num_stagnant_generations = 0
+      end
 
-    if num_stagnant_generations == max_generations_stagnant
-      break
+      if num_stagnant_generations == max_generations_stagnant
+        break
+      end
+      prevfitness = best_fitness
     end
-    prevfitness = best_fitness
+  else
+    @showprogress desc = "Training..." barglyphs = BarGlyphs("[=> ]") for i in 1:generations
+      num_generations_evolved += 1
+      offspring, best_fitness, best_tree = evolve(current_population; kwargs...)
+      if i == 1
+        current_best_fitness = best_fitness
+      end
+      current_population = offspring
+      push!(fitness_history, best_fitness)
+
+      if prevfitness >= best_fitness
+        num_stagnant_generations += 1
+      else
+        num_stagnant_generations = 0
+      end
+
+      if num_stagnant_generations == max_generations_stagnant
+        break
+      end
+      prevfitness = best_fitness
+    end
   end
 
-  if num_generations_evolved < generations
+
+  if num_generations_evolved < generations && verbosity > 0
     println("Stopped training due to stagnations (Total generations trained: $(num_generations_evolved))")
   end
 

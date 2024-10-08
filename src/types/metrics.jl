@@ -12,8 +12,8 @@ function informedness(ŷ, y)
 end
 
 
-SMB.is_measure(informedness) = true
-SMB.kind_of_proxy(informedness) = LearnAPI.LiteralTarget()
+SMB.is_measure(m::typeof(informedness)) = true
+SMB.kind_of_proxy(m::typeof(informedness)) = LearnAPI.LiteralTarget()
 
 
 function markedness(ŷ, y)
@@ -28,8 +28,8 @@ function markedness(ŷ, y)
   return sum(class_markedness .* biases)
 end
 
-SMB.is_measure(markedness) = true
-SMB.kind_of_proxy(markedness) = LearnAPI.LiteralTarget()
+SMB.is_measure(m::typeof(markedness)) = true
+SMB.kind_of_proxy(m::typeof(markedness)) = LearnAPI.LiteralTarget()
 
 
 abstract type TargetType end
@@ -39,16 +39,21 @@ struct LeafDistribution <: TargetType end
 
 abstract type FitnessMetric end
 
-struct F1ScoreFitness <: FitnessMetric end
+struct BinaryF1ScoreFitness <: FitnessMetric end
+struct MultiF1ScoreFitness <: FitnessMetric end
 struct AccuracyFitness <: FitnessMetric end
 struct BalancedAccuracyFitness <: FitnessMetric end
 struct MatthewsCorrelationFitness <: FitnessMetric end
 struct InformednessFitness <: FitnessMetric end
 struct MarkednessFitness <: FitnessMetric end
 
-function metric_function(tree::ClassificationTree, metric_type::Type{A}) where {A<:FitnessMetric}
-  if metric_type == F1ScoreFitness
-    return ST.elscitype(tree.targets) <: Union{Missing,ST.OrderedFactor{2}} ? SM.FScore() : SM.MulticlassFScore()
+function metric_function(metric_type::DataType)
+  metric_type <: FitnessMetric || error("`metric_type` = `$(metric_type)` is not a recognised FitnessMetric.")
+
+  if metric_type == BinaryF1ScoreFitness
+    return SM.FScore()
+  elseif metric_type == MultiF1ScoreFitness
+    return SM.MulticlassFScore()
   elseif metric_type == AccuracyFitness
     return SM.Accuracy()
   elseif metric_type == BalancedAccuracyFitness
@@ -87,7 +92,7 @@ function fitness(
 ) where {A<:FitnessMetric,B<:TargetType}
   ST.elscitype(tree.targets) <: ST.Finite || error("Tree's target is not finite")
 
-  return fitness(tree; metric=metric_function(tree, metric_type), target=target)
+  return fitness(tree; metric=metric_function(metric_type), target=target)
 end
 
 
@@ -170,25 +175,18 @@ function evaluate_fitness(trees::Vector{ClassificationTree}; kwargs...)
   penalty = get(kwargs, :penalty, DepthPenalty)
   penalty_weight = get(kwargs, :penalty_weight, 0.05)
   maxdepth = get(kwargs, :maxdepth, trees[1].maxdepth)
-  metricfunc = get(kwargs, :metric, metric_function(trees[1], get(kwargs, :metric_type, InformednessFitness)))
-  verbose = get(kwargs, :verbose, false)
+  metricfunc = get(kwargs, :metric, metric_function(get(kwargs, :metric_type, InformednessFitness)))
+
 
   n = length(trees)
   fitchannel = Channel(n)
 
   all_fitnesses = Vector{Float64}(undef, n)
-  if verbose
-    @showprogress desc = "Evaluating Fitness Of Trees..." barglyphs = BarGlyphs("[=> ]") @threads for i in 1:n
-      fv = penalised_fitness(trees[i]; metric=metricfunc, target=target, penalty=penalty, penalty_weight=penalty_weight, maxdepth=maxdepth)
-      put!(fitchannel, i => fv)
-    end
-  else
-    @threads for i in 1:n
-      fv = penalised_fitness(trees[i]; metric=metricfunc, target=target, penalty=penalty, penalty_weight=penalty_weight, maxdepth=maxdepth)
-      put!(fitchannel, i => fv)
-    end
-  end
 
+  @threads for i in 1:n
+    fv = penalised_fitness(trees[i]; metric=metricfunc, target=target, penalty=penalty, penalty_weight=penalty_weight, maxdepth=maxdepth)
+    put!(fitchannel, i => fv)
+  end
 
   for i in 1:n
     out = take!(fitchannel)

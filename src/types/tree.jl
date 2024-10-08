@@ -2,7 +2,7 @@ const NodeMap = Dict{Int,@NamedTuple{node::ClassificationTreeNode, rowmask::BitV
 
 struct ClassificationTree
   root::ClassificationTreeNode
-  features::DataFrame
+  features::AbstractDataFrame
   targets::CategoricalVector
   nodemap::NodeMap
   maxdepth::Int
@@ -394,6 +394,49 @@ function outcome_class_predictions(tree::ClassificationTree)
   return ŷ
 end
 
+function outcome_class_predictions(tree::ClassificationTree, Xnew::AbstractDataFrame)
+  ŷ = similar(tree.targets, nrow(Xnew))
+  ŷ.pool = tree.targets.pool
+
+  new_nodemap = create_nodemap(tree, Xnew)
+
+  leaf_nodes = map(x -> x[2], collect(filter(xp -> isleaf(xp[2].node), new_nodemap)))
+  for leaf = leaf_nodes
+    ŷ[leaf.rowmask] .= leaf.node.outcome
+  end
+
+  return ŷ
+
+end
+
+function create_nodemap(tree::ClassificationTree, Xnew::AbstractDataFrame)
+
+  new_nodemap = NodeMap()
+
+  current_node_number = 0
+  function process_node(node::ClassificationTreeNode, prev_mask::BitVector, parent_idx::Union{Nothing,Int})
+    current_node_number += 1
+    if isroot(node)
+      additional_mask = BitVector(ones(nrow(Xnew)))
+    else
+      parent_threshold = parent(node).threshold
+      parent_attribute = parent(node).attribute
+      additional_mask = isleftchild(node) ? ((@view Xnew[!, parent_attribute]) .< parent_threshold) : ((@view Xnew[!, parent_attribute]) .>= parent_threshold)
+    end
+    new_mask = prev_mask .& additional_mask
+    new_nodemap[current_node_number] = (node=node, rowmask=new_mask, parent=parent_idx)
+
+    if isbranch(node)
+      process_node(node.left[], new_mask, current_node_number)
+      process_node(node.right[], new_mask, current_node_number)
+    end
+  end
+
+  process_node(tree.root, BitVector(ones(nrow(Xnew))), nothing)
+
+  return new_nodemap
+end
+
 
 function outcome_probability_predictions(tree::ClassificationTree)
   numlevels = length(levels(tree))
@@ -409,4 +452,34 @@ function outcome_probability_predictions(tree::ClassificationTree)
   end
 
   return MMI.UnivariateFinite(levels(tree), probs, pool=tree.targets.pool)
+end
+
+
+function outcome_probability_predictions(tree::ClassificationTree, Xnew::AbstractDataFrame)
+  numlevels = length(levels(tree))
+  leaf_nodes_with_index = collect(filter(xp -> isleaf(xp[2].node), tree.nodemap)) #map(x -> x[2], collect(filter(xp -> isleaf(xp[2].node), tree.nodemap)))
+  filter!(x -> sum(x[2].rowmask) > 0, leaf_nodes_with_index)
+  probs_in_original_leaf = Dict{Int,Vector{Float64}}()
+
+  for i in eachindex(leaf_nodes_with_index)
+    node_number = leaf_nodes_with_index[i][1]
+    leafinfo = leaf_nodes_with_index[i][2]
+    ysubset = @view tree.targets[leafinfo.rowmask]
+    prob_vector = map(level -> sum(ysubset .== level) / length(ysubset), levels(tree))
+    probs_in_original_leaf[node_number] = prob_vector
+  end
+
+
+  probs_in_new_data = Matrix(undef, nrow(Xnew), length(levels(tree)))
+
+  new_nodemap = create_nodemap(tree, Xnew)
+
+  for i in eachindex(leaf_nodes_with_index)
+    node_number = leaf_nodes_with_index[i][1]
+    new_row_mask = new_nodemap[node_number].rowmask
+    prob_vector = probs_in_original_leaf[node_number]
+    probs_in_new_data[new_row_mask, :] .= reshape(prob_vector, 1, size(probs_in_new_data)[2])
+  end
+
+  return MMI.UnivariateFinite(levels(tree), probs_in_new_data, pool=tree.targets.pool)
 end
