@@ -74,67 +74,40 @@ abstract type PenaltyType end
 struct DepthPenalty <: PenaltyType end
 struct NodePenalty <: PenaltyType end
 
-function fitness(
-  tree::ClassificationTree;
-  metric,
-  target::Type{T}=LeafLabel
-) where {T<:TargetType}
+
+function fitness(tree::ClassificationTree; kwargs...)
+  metric = get(kwargs, :metric, metric_function(get(kwargs, :metric_type, InformednessFitness)))
   SMB.is_measure(metric) || error("Given metric is not a valid statistical measure.")
+  target = get(kwargs, :target, LeafLabel)
   ŷ = target == LeafDistribution ? mode.(outcome_probability_predictions(tree)) : outcome_class_predictions(tree)
   y = tree.targets
   return metric(ŷ, y)
 end
 
-function fitness(
-  tree::ClassificationTree,
-  metric_type::Type{A};
-  target::Type{B}=LeafLabel
-) where {A<:FitnessMetric,B<:TargetType}
-  ST.elscitype(tree.targets) <: ST.Finite || error("Tree's target is not finite")
+"""
+    penalised_fitness(tree::ClassificationTree; kwargs...)
 
-  return fitness(tree; metric=metric_function(metric_type), target=target)
+Compute fitness of `tree` with a penalty.
+
+# Keyword Arguments
+- `metric_type::FitnessMetric=InformednessFitness`: which fitness metric to evaluate the tree with. 
+- `metric::Any`: any function that implements `StatisticalMeasuresBase.is_measure()`, if not provided uses the `metric_type` to create one.
+- `penalty::PenaltyType=DepthPenalty`: what type of penalty is applied to fitness calculation.
+- `penalty_weight::Float64=0.5`: how much weight is assigned to penalty in fitness calculation.
+- `maxdepth::Int=tree.maxdepth`: max depth of tree used for penalty calculation.
+
+"""
+function penalised_fitness(tree::ClassificationTree; kwargs...)
+  penalty = get(kwargs, :penalty, DepthPenalty)
+  penalty <: PenaltyType || error("`penalty` - $(penalty) not recognised")
+  penalty_weight = get(kwargs, :penalty_weight, 0.05)
+  maxdepth = get(kwargs, :maxdepth, tree.maxdepth)
+  fv = fitness(tree; kwargs)
+  raw_penalty = fv - penalty_weight * (penalty == DepthPenalty ? (AT.treeheight(tree) / maxdepth) : (length(keys(tree.nodemap)) / 2^(maxdepth)))
+
+  return 1 / (1 + exp(-1 * raw_penalty))
 end
 
-
-function penalised_fitness(
-  tree::ClassificationTree,
-  fitness_value::Float64;
-  penalty::Type{A}=DepthPenalty,
-  penalty_weight::Float64=0.05,
-  maxdepth::Int=tree.maxdepth
-) where {A<:PenaltyType}
-  if penalty == DepthPenalty
-    return fitness_value - penalty_weight * (AT.treeheight(tree.root) / maxdepth)
-  elseif penalty == NodePenalty
-    return fitness_value - penalty_weight * (length(keys(tree.nodemap)) / (2^(maxdepth)))
-  else
-    error("`penalty` = `$(penalty)` not recognised")
-  end
-end
-
-function penalised_fitness(
-  tree::ClassificationTree,
-  metric_type::Type{A};
-  target::Type{B}=LeafLabel,
-  penalty_weight::Float64=0.05,
-  penalty::Type{C}=DepthPenalty,
-  maxdepth::Int=tree.maxdepth
-) where {A<:FitnessMetric,B<:TargetType,C<:PenaltyType}
-  tf = fitness(tree, metric_type; target=target)
-  return penalised_fitness(tree, tf; penalty=penalty, penalty_weight=penalty_weight, maxdepth=maxdepth)
-end
-
-function penalised_fitness(
-  tree;
-  metric,
-  target::Type{A}=LeafLabel,
-  penalty::Type{B}=DepthPenalty,
-  penalty_weight::Float64=0.05,
-  maxdepth::Int=tree.maxdepth
-) where {A<:TargetType,B<:PenaltyType}
-  tf = fitness(tree; metric=metric, target=target)
-  return penalised_fitness(tree, tf; penalty=penalty, penalty_weight=penalty_weight, maxdepth=maxdepth)
-end
 
 
 function prune(tree::ClassificationTree; maxdepth::Int=tree.maxdepth)

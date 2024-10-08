@@ -81,7 +81,7 @@ function Makie.plot!(plt::PlotClassifierTree{<:Tuple{ClassificationTree}})
   nlabels_color = map(properties, all_labels, leafcolor, textcolor, nodecolormap) do properties, all_labels, leafcolor, textcolor, nodecolormap
     leaf_ix = findall([isnothing(p[1]) ? false : isleaf(p[1]) for p in properties])
     leaf_label_texts = all_labels[leaf_ix]   #[p[1] for p in split.(leaf_labels[leaf_ix], ":")]
-    unique_labels = unique(leaf_label_texts)
+    unique_labels = sort(unique(leaf_label_texts))
     inidividual_leaf_colors = resample_cmap(nodecolormap, length(unique_labels))
     nlabels_color = Any[isnothing(p[1]) ? textcolor : isbranch(p[1]) ? textcolor : leafcolor for p in properties]
     for (ix, uLV) = enumerate(unique_labels)

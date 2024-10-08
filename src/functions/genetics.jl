@@ -130,9 +130,10 @@ function train(
 )
   max_generations_stagnant = get(kwargs, :max_generations_stagnant, Int(floor(generations * 0.2)))
   verbosity = get(kwargs, :verbosity, 1)
+
+
   current_population = trees
   fitness_history = Vector{Float64}()
-
   prevfitness = 0
   num_stagnant_generations = 0
   num_generations_evolved = 0
