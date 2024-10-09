@@ -32,10 +32,10 @@ SMB.is_measure(m::typeof(markedness)) = true
 SMB.kind_of_proxy(m::typeof(markedness)) = LearnAPI.LiteralTarget()
 
 
-abstract type ClassificationOutcomeType end
+abstract type ClassificationPredictionType end
 
-struct LeafLabel <: ClassificationOutcomeType end
-struct LeafDistribution <: ClassificationOutcomeType end
+struct LeafLabel <: ClassificationPredictionType end
+struct LeafDistribution <: ClassificationPredictionType end
 
 abstract type ClassificationFitnessType end
 

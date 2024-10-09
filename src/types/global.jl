@@ -305,7 +305,7 @@ function Base.copy(tree::AbstractDecisionTree{V}) where {V<:AbstractTreeNode}
     tree.targets,
     new_nodemap,
     tree.max_depth,
-    tree.leafpredictor
+    tree.leaf_predictor
   )
   reset_nodemap!(new_tree)
   return new_tree

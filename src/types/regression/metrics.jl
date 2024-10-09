@@ -1,39 +1,39 @@
-function R²(ŷ, y)
+function R²(ŷ, y, arg...)
   R_total = sum((y .- mean(y)) .^ 2)
   R_res = sum((y - ŷ) .^ 2)
 
   return 1 - (R_res / R_total)
 end
 
-function create_adjusted_R²(tree::RegressionTree)
+function adjusted_R²(ŷ, y, args...)
+  tree = args[1]
   n = nrow(tree.features)
   p = length(keys(tree.nodemap))
 
   df_total = n - 1
   df_tree = n - p - 1
 
-  function adjusted_R²(ŷ, y)
-    R_total = sum((y .- mean(y)) .^ 2)
-    R_res = sum((y - ŷ) .^ 2)
+  R_total = sum((y .- mean(y)) .^ 2)
+  R_res = sum((y - ŷ) .^ 2)
 
-    return 1 - ((R_res / df_tree) / R_total / (df_total))
-  end
+  return 1 - ((R_res / df_tree) / R_total / (df_total))
 
-  return adjusted_R²
 end
+
+
 
 abstract type RegressionFitnessType end
 
 struct RSquaredFitness <: RegressionFitnessType end
 struct AdjustedRSquaredFitness <: RegressionFitnessType end
 
-function fitness_type_function(tree::RegressionTree, metric_type::Type{T}) where {T<:RegressionFitnessType}
+function fitness_type_function(metric_type::Type{T}) where {T<:RegressionFitnessType}
   T <: RegressionFitnessType || error("`metric_type` = `$(metric_type)` is not a recognised RegressionFitnessMetric.")
 
   if T <: RSquaredFitness
     return R²
   elseif T <: AdjustedRSquaredFitness
-    return create_adjusted_R²(tree)
+    return adjusted_R²
   else
     error("`metric_type` = `$(metric_type)` not recognised")
   end
@@ -50,12 +50,12 @@ Compute raw fitness of `tree` without a penalty.
 
 """
 function fitness(tree::RegressionTree; kwargs...)
-  fitness_function = get(kwargs, :fitness_function, fitness_type_function(tree, get(kwargs, :fitness_function_type, RSquaredFitness)))
+  fitness_function = get(kwargs, :fitness_function, fitness_type_function(get(kwargs, :fitness_function_type, RSquaredFitness)))
 
   ŷ = outcome_predictions(tree)
   y = tree.targets
 
-  return fitness_function(ŷ, y)
+  return fitness_function(ŷ, y, tree)
 end
 
 """

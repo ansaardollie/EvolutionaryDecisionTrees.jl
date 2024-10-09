@@ -6,17 +6,17 @@ mutable struct RegressionTree <: AbstractDecisionTree{RegressionTreeNode}
   targets::AbstractVector{Float64}
   nodemap::NodeMap{RegressionTreeNode}
   max_depth::Int
-  leafpredictor::Function
+  leaf_predictor::Function
 end
 
-abstract type LeafPredictionType end
+abstract type RegressionPredictionType end
 
-struct MeanPrediction <: LeafPredictionType end
-struct MedianPrediction <: LeafPredictionType end
-struct MidpointPrediction <: LeafPredictionType end
-struct RandomPrediction <: LeafPredictionType end
+struct MeanPrediction <: RegressionPredictionType end
+struct MedianPrediction <: RegressionPredictionType end
+struct MidpointPrediction <: RegressionPredictionType end
+struct RandomPrediction <: RegressionPredictionType end
 
-function leaf_predictor(T::Type{<:LeafPredictionType})
+function leaf_predictor(T::Type{<:RegressionPredictionType})
   if T <: MeanPrediction
     return (target_subset, feature_subset) -> mean(target_subset)
   elseif T <: MedianPrediction
@@ -39,7 +39,7 @@ function create_prediction_selector(tree::RegressionTree)
     mask = isnothing(mask) ? BitVector(ones(length(y))) : mask
     y_subset = @view y[mask]
     X_subset = @view X[mask, :]
-    return sum(mask) > 0 ? tree.leafpredictor(y_subset, X_subset) : mean(y)
+    return sum(mask) > 0 ? tree.leaf_predictor(y_subset, X_subset) : mean(y)
   end
 
   return prediction
@@ -59,7 +59,7 @@ function random_regression_tree(X::AbstractDataFrame, y::AbstractVector{Float64}
   max_depth = get(kwargs, :max_depth, 5)
   split_probability = get(kwargs, :split_probability, 0.5)
   leaf_prediction_type = get(kwargs, :leaf_prediction_type, MeanPrediction)
-  leaf_prediction_type <: LeafPredictionType || error("`leaf_prediction_type` = `$(leaf_prediction_type)` is not a recognised LeafPredictionType")
+  leaf_prediction_type <: RegressionPredictionType || error("`leaf_prediction_type` = `$(leaf_prediction_type)` is not a recognised LeafPredictionType")
   leaf_prediction_function = get(kwargs, :leaf_prediction_function, leaf_predictor(leaf_prediction_type))
 
   attribute_labels = Dict(pairs(names(X)))
@@ -148,6 +148,20 @@ function outcome_predictions(tree::RegressionTree)
 
   leaf_nodes = map(x -> x[2], collect(filter(xp -> isleaf(xp[2].node), tree.nodemap)))
   for leaf = leaf_nodes
+    ŷ[leaf.rowmask] .= leaf.node.outcome
+  end
+
+  return ŷ
+end
+
+function outcome_predictions(tree::RegressionTree, Xnew::AbstractDataFrame)
+  ŷ = similar(tree.targets, nrow(Xnew))
+
+  new_nodemap = create_nodemap(tree, Xnew)
+
+  leaf_nodes = map(x -> x[2], collect(filter(xp -> isleaf(xp[2].node), new_nodemap)))
+
+  for leaf in leaf_nodes
     ŷ[leaf.rowmask] .= leaf.node.outcome
   end
 
