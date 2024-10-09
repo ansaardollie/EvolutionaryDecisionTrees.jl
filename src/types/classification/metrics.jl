@@ -32,23 +32,23 @@ SMB.is_measure(m::typeof(markedness)) = true
 SMB.kind_of_proxy(m::typeof(markedness)) = LearnAPI.LiteralTarget()
 
 
-abstract type TargetType end
+abstract type ClassificationOutcomeType end
 
-struct LeafLabel <: TargetType end
-struct LeafDistribution <: TargetType end
+struct LeafLabel <: ClassificationOutcomeType end
+struct LeafDistribution <: ClassificationOutcomeType end
 
-abstract type ClassificationFitnessMetric end
+abstract type ClassificationFitnessType end
 
-struct BinaryF1ScoreFitness <: ClassificationFitnessMetric end
-struct MultiF1ScoreFitness <: ClassificationFitnessMetric end
-struct AccuracyFitness <: ClassificationFitnessMetric end
-struct BalancedAccuracyFitness <: ClassificationFitnessMetric end
-struct MatthewsCorrelationFitness <: ClassificationFitnessMetric end
-struct InformednessFitness <: ClassificationFitnessMetric end
-struct MarkednessFitness <: ClassificationFitnessMetric end
+struct BinaryF1ScoreFitness <: ClassificationFitnessType end
+struct MultiF1ScoreFitness <: ClassificationFitnessType end
+struct AccuracyFitness <: ClassificationFitnessType end
+struct BalancedAccuracyFitness <: ClassificationFitnessType end
+struct MatthewsCorrelationFitness <: ClassificationFitnessType end
+struct InformednessFitness <: ClassificationFitnessType end
+struct MarkednessFitness <: ClassificationFitnessType end
 
-function fitness_function(metric_type::Type{T}) where {T<:ClassificationFitnessMetric}
-  T <: ClassificationFitnessMetric || error("`metric_type` = `$(metric_type)` is not a recognised ClassificationFitnessMetric.")
+function fitness_type_function(fitness_type::Type{T}) where {T<:ClassificationFitnessType}
+  T <: ClassificationFitnessType || error("`fitness_type` = `$(fitness_type)` is not a recognised ClassificationFitnessMetric.")
 
   if T == BinaryF1ScoreFitness
     return SM.FScore()
@@ -65,7 +65,7 @@ function fitness_function(metric_type::Type{T}) where {T<:ClassificationFitnessM
   elseif T == MarkednessFitness
     return markedness
   else
-    error("`metric_type` = `$(metric_type)` not recognised")
+    error("`metric_type` = `$(fitness_type)` not recognised")
   end
 end
 
@@ -75,13 +75,25 @@ struct DepthPenalty <: PenaltyType end
 struct NodePenalty <: PenaltyType end
 
 
+"""
+    fitness(tree::ClassificationTree; kwargs...)
+
+Compute raw fitness of `tree` without a penalty.
+
+# Keyword Arguments
+- `fitness_function::Any`: any function that implements `StatisticalMeasuresBase.is_measure()`, if `nothing` uses the `fitness_function_type` to create one.
+- `fitness_function_type::ClassificationFitnessType=InformednessFitness`: which fitness metric to evaluate the tree with. 
+- `label_type::ClassificationOutcomeType=LeafLabel`: how outcomes in leaf nodes should be predicted.
+"""
 function fitness(tree::ClassificationTree; kwargs...)
-  metric = get(kwargs, :metric, fitness_function(get(kwargs, :metric_type, InformednessFitness)))
-  SMB.is_measure(metric) || error("Given metric is not a valid statistical measure.")
-  target = get(kwargs, :target, LeafLabel)
-  ŷ = target == LeafDistribution ? mode.(outcome_probability_predictions(tree)) : outcome_class_predictions(tree)
+  fitness_function = get(kwargs, :fitness_function, fitness_type_function(get(kwargs, :fitness_function_type, InformednessFitness)))
+  SMB.is_measure(fitness_function) || error("Given `fitness_function` is not a valid statistical measure.")
+  label_type = get(kwargs, :label_type, LeafLabel)
+
+  ŷ = label_type == LeafDistribution ? mode.(outcome_probability_predictions(tree)) : outcome_class_predictions(tree)
   y = tree.targets
-  return metric(ŷ, y)
+
+  return fitness_function(ŷ, y)
 end
 
 """
@@ -90,39 +102,64 @@ end
 Compute fitness of `tree` with a penalty.
 
 # Keyword Arguments
-- `metric_type::FitnessMetric=InformednessFitness`: which fitness metric to evaluate the tree with. 
-- `metric::Any`: any function that implements `StatisticalMeasuresBase.is_measure()`, if not provided uses the `metric_type` to create one.
-- `penalty::PenaltyType=DepthPenalty`: what type of penalty is applied to fitness calculation.
+- `fitness_function::Any`: any function that implements `StatisticalMeasuresBase.is_measure()`, if `nothing` uses the `fitness_function_type` to create one.
+- `fitness_function_type::ClassificationFitnessType=InformednessFitness`: which fitness metric to evaluate the tree with. 
+- `label_type::ClassificationOutcomeType=LeafLabel`: how outcomes in leaf nodes should be predicted.
+- `penalty_type::PenaltyType=DepthPenalty`: what type of penalty is applied to fitness calculation.
 - `penalty_weight::Float64=0.5`: how much weight is assigned to penalty in fitness calculation.
-- `maxdepth::Int=tree.maxdepth`: max depth of tree used for penalty calculation.
+- `max_depth::Int=tree.maxdepth`: max depth of tree used for penalty calculation.
 
 """
 function penalised_fitness(tree::ClassificationTree; kwargs...)
-  penalty = get(kwargs, :penalty, DepthPenalty)
-  penalty <: PenaltyType || error("`penalty` - $(penalty) not recognised")
+  penalty_type = get(kwargs, :penalty_type, DepthPenalty)
+  penalty_type <: PenaltyType || error("`penalty_type` - $(penalty_type) not recognised")
   penalty_weight = get(kwargs, :penalty_weight, 0.05)
-  maxdepth = get(kwargs, :maxdepth, tree.maxdepth)
-  fv = fitness(tree; kwargs)
-  raw_penalised_fitness = fv - penalty_weight * (penalty == DepthPenalty ? (AT.treeheight(tree) / maxdepth) : (length(keys(tree.nodemap)) / 2^(maxdepth)))
+  max_depth = get(kwargs, :max_depth, tree.max_depth)
 
-  return 1 / (1 + exp(-1 * raw_penalised_fitness))
+  raw_fitness = fitness(tree; kwargs)
+  penalty = penalty_type == DepthPenalty ?
+            (AT.treeheight(tree) / max_depth) :
+            (length(keys(tree.nodemap)) / 2^(max_depth))
+  raw_penalised_fitness = raw_fitness - penalty_weight * penalty
+  rescaled_penalised_fitness = (1 + exp(-1)) / (1 + exp(-1 * (raw_penalised_fitness / 1)))
+
+  return (raw=raw_fitness, penalised=raw_penalised_fitness, rescaled=rescaled_penalised_fitness)
 end
 
 
+"""
+    prune(tree::ClassificationTree; kwargs...)
 
-function prune(tree::ClassificationTree; maxdepth::Int=tree.maxdepth)
+Prune a copy of `tree` and return pruned tree.
+
+# Keyword Arguments
+- `max_depth::Int=tree.maxdepth`: depth of pruned tree.
+
+"""
+function prune(tree::ClassificationTree; kwargs...)
   tcopy = copy(tree)
-  return prune!(tcopy, maxdepth=maxdepth)
+  return prune!(tcopy, kwargs...)
 end
 
-function prune!(tree::ClassificationTree; maxdepth::Int=tree.maxdepth)
+"""
+    prune!(tree::ClassificationTree; kwargs...)
+
+Prune `tree` in place and return pruned tree.
+
+# Keyword Arguments
+- `max_depth::Int=tree.maxdepth`: depth of pruned tree.
+
+"""
+function prune!(tree::ClassificationTree; kwargs...)
+  max_depth = get(kwargs, :max_depth, tree.max_depth)
+
   random_outcome = create_outcome_randomiser(tree)
 
   function process_node(node::ClassificationTreeNode)
     current_node_level = nodelevel(node)
     original_node_number = nodenumber(tree, node)
     original_node_mask = tree.nodemap[original_node_number].rowmask
-    if current_node_level + 1 > maxdepth && isbranch(node)
+    if current_node_level + 1 > max_depth && isbranch(node)
       new_outcome = random_outcome(original_node_mask)
       new_node = leaf(ClassificationTreeNode, new_outcome; attribute_labels_dict=node.attribute_labels)
 
@@ -146,28 +183,35 @@ function prune!(tree::ClassificationTree; maxdepth::Int=tree.maxdepth)
   return tree
 end
 
+"""
+    evaluate_fitness(trees::Vector{ClassificationTree}; kwargs...)
+
+Evaluate the fitness of each tree in `trees` and returns vector of `FitnessValues`.
+
+# Keyword Arguments
+- `fitness_function::Any`: any function that implements `StatisticalMeasuresBase.is_measure()`, if `nothing` uses the `fitness_function_type` to create one.
+- `fitness_function_type::ClassificationFitnessType=InformednessFitness`: which fitness metric to evaluate the tree with. 
+- `label_type::ClassificationOutcomeType=LeafLabel`: how outcomes in leaf nodes should be predicted.
+- `penalty_type::PenaltyType=DepthPenalty`: what type of penalty is applied to fitness calculation.
+- `penalty_weight::Float64=0.5`: how much weight is assigned to penalty in fitness calculation.
+- `max_depth::Int`: max depth of tree used for penalty calculation, defaults to the tree's `max_depth`.
+
+"""
 function evaluate_fitness(trees::Vector{ClassificationTree}; kwargs...)
-  target = get(kwargs, :target, LeafLabel)
-  penalty = get(kwargs, :penalty, DepthPenalty)
-  penalty_weight = get(kwargs, :penalty_weight, 0.05)
-  maxdepth = get(kwargs, :maxdepth, trees[1].maxdepth)
-  metricfunc = get(kwargs, :metric, fitness_function(get(kwargs, :metric_type, InformednessFitness)))
-
-
   n = length(trees)
   fitchannel = Channel(n)
 
-  all_fitnesses = Vector{Float64}(undef, n)
+  tree_fitnesses = Vector{FitnessValues}(undef, n)
 
   @threads for i in 1:n
-    fv = penalised_fitness(trees[i]; metric=metricfunc, target=target, penalty=penalty, penalty_weight=penalty_weight, maxdepth=maxdepth)
-    put!(fitchannel, i => fv)
+    all_fitness_values = penalised_fitness(trees[i]; kwargs...)
+    put!(fitchannel, i => all_fitness_values)
   end
 
   for i in 1:n
     out = take!(fitchannel)
-    all_fitnesses[out[1]] = out[2]
+    tree_fitnesses[out[1]] = out[2]
   end
 
-  return all_fitnesses
+  return tree_fitnesses
 end

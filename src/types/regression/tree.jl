@@ -3,9 +3,9 @@
 mutable struct RegressionTree <: AbstractDecisionTree{RegressionTreeNode}
   root::RegressionTreeNode
   features::AbstractDataFrame
-  targets::Vector{Float64}
+  targets::AbstractVector{Float64}
   nodemap::NodeMap{RegressionTreeNode}
-  maxdepth::Int
+  max_depth::Int
   leafpredictor::Function
 end
 
@@ -45,10 +45,26 @@ function create_prediction_selector(tree::RegressionTree)
   return prediction
 end
 
-function random_regression_tree(X, y; leafpredfunc::Union{Nothing,Function}=nothing, leafpredtype::Type{T}=MeanPrediction, maxdepth=5, probsplit=0.5) where {T<:LeafPredictionType}
+"""
+    random_regression_tree(X::AbstractDataFrame, y::AbstractVector{Float64}; kwargs...)
+
+# Keyword Arguments
+- `max_depth::Int=5`: maximum depth of generated tree.
+- `split_probability::Float64=0.5`: probability of splitting a node into another branch instead of a leaf.
+- `leaf_prediction_function::Union{Nothing, Function}=nothing`: function that computes the prediction for leaf 
+based on the subset of `y` and `X` that ends up in that leaf, if `nothing` uses `leaf_prediction_type` to determine the function.
+- `leaf_prediction_type::Type{<:LeafPredictionType}=MeanPrediction`: the type of leaf prediction to use.
+"""
+function random_regression_tree(X::AbstractDataFrame, y::AbstractVector{Float64}; kwargs...)
+  max_depth = get(kwargs, :max_depth, 5)
+  split_probability = get(kwargs, :split_probability, 0.5)
+  leaf_prediction_type = get(kwargs, :leaf_prediction_type, MeanPrediction)
+  leaf_prediction_type <: LeafPredictionType || error("`leaf_prediction_type` = `$(leaf_prediction_type)` is not a recognised LeafPredictionType")
+  leaf_prediction_function = get(kwargs, :leaf_prediction_function, leaf_predictor(leaf_prediction_type))
+
   attribute_labels = Dict(pairs(names(X)))
 
-  lpf = isnothing(leafpredfunc) ? leaf_predictor(leafpredtype) : leafpredfunc
+  lpf = isnothing(leaf_prediction_function) ? leaf_predictor(leaf_prediction_type) : leaf_prediction_function
 
   root_attr = rand(1:ncol(X))
   root_threshold = rand(@view X[!, root_attr])
@@ -72,7 +88,7 @@ function random_regression_tree(X, y; leafpredfunc::Union{Nothing,Function}=noth
     X,
     y,
     NodeMap{RegressionTreeNode}(1 => (node=root, rowmask=BitVector(ones(nrow(X))), parent=nothing)),
-    maxdepth,
+    max_depth,
     lpf
   )
 
@@ -82,7 +98,7 @@ function random_regression_tree(X, y; leafpredfunc::Union{Nothing,Function}=noth
   while length(children_to_randomise) > 0
     current_num_nodes += 1
     parent, mask, direction, parent_index = pop!(children_to_randomise)
-    if ((nodelevel(parent) == maxdepth - 1) || rand() >= probsplit)
+    if ((nodelevel(parent) == max_depth - 1) || rand() >= split_probability)
       leaf_node = child!(direction, parent, leaf_prediction(mask))
       tree.nodemap[current_num_nodes] = (node=leaf_node, rowmask=mask, parent=parent_index)
     else
@@ -101,16 +117,26 @@ function random_regression_tree(X, y; leafpredfunc::Union{Nothing,Function}=noth
 end
 
 
-function random_regression_trees(numtrees, X, y; leafpredfunc::Union{Nothing,Function}=nothing, leafpredtype::Type{T}=MeanPrediction, maxdepth=5, probsplit=0.5) where {T<:LeafPredictionType}
-  treechan = Channel{Any}(numtrees)
+"""
+    random_regression_trees(generation_size::Int, X::AbstractDataFrame, y::AbstractVector{Float64}; kwargs...)
 
-  for i in 1:numtrees
-    t = random_regression_tree(X, y; leafpredfunc=leafpredfunc, leafpredtype=leafpredtype, maxdepth=maxdepth, probsplit=probsplit)
+# Keyword Arguments
+- `max_depth::Int=5`: maximum depth of generated tree.
+- `split_probability::Float64=0.5`: probability of splitting a node into another branch instead of a leaf.
+- `leaf_prediction_function::Union{Nothing, Function}=nothing`: function that computes the prediction for leaf 
+based on the subset of `y` and `X` that ends up in that leaf, if `nothing` uses `leaf_prediction_type` to determine the function.
+- `leaf_prediction_type::Type{<:LeafPredictionType}=MeanPrediction`: the type of leaf prediction to use.
+"""
+function random_regression_trees(generation_size::Int, X::AbstractDataFrame, y::AbstractVector{Float64}; kwargs...)
+  treechan = Channel{Any}(generation_size)
+
+  for i in 1:generation_size
+    t = random_regression_tree(X, y; kwargs)
 
     put!(treechan, t)
   end
 
-  all_trees = [take!(treechan) for i in 1:numtrees]
+  all_trees = [take!(treechan) for i in 1:generation_size]
 
   return all_trees
 end

@@ -7,12 +7,12 @@ mutable struct DeterministicEvolutionaryDecisionTreeClassifier <: MMI.Determinis
   split_probability::Float64
   mutation_probability::Float64
   num_mutations::Int
-  fitness_metric::Any
+  fitness_function::Any
   penalty_type::DataType
   penalty_weight::Float64
   label_type::DataType
   elite_proportion::Float64
-  max_stagnant_generations::Int
+  max_generations_stagnant::Int
   seed::Int
 end
 
@@ -54,9 +54,9 @@ function MMI.clean!(model::DeterministicEvolutionaryDecisionTreeClassifier)
     model.elite_proportion = 0.1
   end
 
-  if !(0 < model.max_stagnant_generations <= model.num_generations)
-    warning *= "Need max_stagnant_generations ∈ (0, $(model.num_generations)). Resetting num_generations = $(Int(floor(0.2 * model.num_generations)))"
-    model.max_stagnant_generations = Int(floor(0.2 * model.num_generations))
+  if !(0 < model.max_generations_stagnant <= model.num_generations)
+    warning *= "Need max_generations_stagnant ∈ (0, $(model.num_generations)). Resetting num_generations = $(Int(floor(0.2 * model.num_generations)))"
+    model.max_generations_stagnant = Int(floor(0.2 * model.num_generations))
   end
 
   return warning
@@ -70,22 +70,22 @@ function DeterministicEvolutionaryDecisionTreeClassifier(;
   split_probability::Float64=0.5,
   mutation_probability::Float64=0.5,
   num_mutations::Int=1,
-  fitness_metric_type::DataType=InformednessFitness,
-  fitness_metric::Union{Nothing,Function}=nothing,
+  fitness_function_type::DataType=InformednessFitness,
+  fitness_function::Union{Nothing,Function}=nothing,
   penalty_type::DataType=NodePenalty,
   penalty_weight::Float64=0.05,
   label_type::DataType=LeafLabel,
   elite_proportion::Float64=0.2,
-  max_stagnant_generations::Union{Nothing,Int}=nothing,
+  max_generations_stagnant::Union{Nothing,Int}=nothing,
   seed::Int=-1
 )
 
   penalty_type <: PenaltyType || error("`penalty_type` = $(penalty_type)` is not a recognised PenatlyType")
-  label_type <: TargetType || error("`label_type` = $(label_type) is not a recognised TargetType")
+  label_type <: ClassificationOutcomeType || error("`label_type` = $(label_type) is not a recognised TargetType")
 
-  fitness_metric = isnothing(fitness_metric) ? fitness_function(fitness_metric_type) : fitness_metric
+  fitness_function = isnothing(fitness_function) ? fitness_type_function(fitness_function_type) : fitness_function
 
-  SMB.is_measure(fitness_metric) || error("Fitness metric is not a recognised measure")
+  SMB.is_measure(fitness_function) || error("Fitness metric is not a recognised measure")
 
   model = DeterministicEvolutionaryDecisionTreeClassifier(
     generation_size,
@@ -94,12 +94,12 @@ function DeterministicEvolutionaryDecisionTreeClassifier(;
     split_probability,
     mutation_probability,
     num_mutations,
-    fitness_metric,
+    fitness_function,
     penalty_type,
     penalty_weight,
     label_type,
     elite_proportion,
-    max_stagnant_generations,
+    max_generations_stagnant,
     seed
   )
 
@@ -146,24 +146,24 @@ function MMI.fit(model::DeterministicEvolutionaryDecisionTreeClassifier, verbosi
   initial_population = random_classification_trees(model.generation_size, X, y; maxdepth=model.max_depth, probsplit=model.split_probability)
 
   train_config = Dict(
-    :generations => model.num_generations,
-    :max_generations_stagnant => model.max_stagnant_generations,
+    :num_generations => model.num_generations,
+    :max_generations_stagnant => model.max_generations_stagnant,
     :verbosity => verbosity,
-    :metric => model.fitness_metric,
-    :maxdepth => model.max_depth,
-    :target => model.label_type,
-    :penalty => model.penalty_type,
+    :fitness_function => model.fitness_function,
+    :max_depth => model.max_depth,
+    :label_type => model.label_type,
+    :penalty_type => model.penalty_type,
     :penalty_weight => model.penalty_weight,
-    :probmutation => model.mutation_probability,
+    :mutation_probability => model.mutation_probability,
     :num_mutations => model.num_mutations,
-    :eliteprop => model.elite_proportion
+    :elite_propprtion => model.elite_proportion
   )
 
   out = train(initial_population; train_config...)
 
   fitresult = (out.best_tree,)
   cache = (out.final_population,)
-  report = (out.final_fitnesses, out.fitness_history, out.final_population)
+  report = (out.best_tree_history, out.fitness_history)
 
   return (fitresult, cache, report)
 end

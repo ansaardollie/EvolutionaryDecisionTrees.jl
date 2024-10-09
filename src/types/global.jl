@@ -10,6 +10,8 @@ struct RightChild <: ChildDirection end
 abstract type AbstractTreeNode end
 
 
+const FitnessValues = @NamedTuple{raw::Float64, penalised::Float64, rescaled::Float64}
+
 parent(node::AbstractTreeNode) = node.parent[]
 left(node::AbstractTreeNode) = node.left[]
 right(node::AbstractTreeNode) = node.right[]
@@ -296,13 +298,13 @@ function Base.copy(tree::AbstractDecisionTree{V}) where {V<:AbstractTreeNode}
     tree.features,
     tree.targets,
     new_nodemap,
-    tree.maxdepth
+    tree.max_depth
   ) : RegressionTree(
     root_copy,
     tree.features,
     tree.targets,
     new_nodemap,
-    tree.maxdepth,
+    tree.max_depth,
     tree.leafpredictor
   )
   reset_nodemap!(new_tree)
@@ -493,13 +495,22 @@ function create_constraints_generator(tree::AbstractDecisionTree{V}) where {V<:A
 end
 
 
+function Base.print(io::IO, tree::T) where {T<:AbstractDecisionTree{V}} where {V<:AbstractTreeNode}
+  nleaves = length(collect(AT.Leaves(tree.root)))
+  nbranches = length(collect(AT.PreOrderDFS(tree.root))) - nleaves
+  treetype = tree_type(tree)
+  print(io, "$treetype tree with $nleaves leaf nodes and $nbranches branch nodes")
+end
+
+function Base.print(tree::T) where {T<:AbstractDecisionTree{V}} where {V<:AbstractTreeNode}
+  io = stdout
+  print(io, tree)
+end
+
 
 function Base.show(io::IO, tree::AbstractDecisionTree{V}; without_constraints::Bool=false, kw...) where {V<:AbstractTreeNode}
   if get(io, :in_forest, false)
-    nleaves = length(collect(AT.Leaves(tree.root)))
-    nbranches = length(collect(AT.PreOrderDFS(tree.root))) - nleaves
-    treetype = tree_type(tree)
-    print(io, "$treetype tree with $nleaves leaf nodes and $nbranches branch nodes")
+    print(io, tree)
   elseif without_constraints
     AT.print_tree(io, tree.root; kw...)
   else
@@ -542,26 +553,56 @@ end
 
 
 
+function Base.display(io::IO, trees::Vector{<:AbstractDecisionTree{V}}) where {V<:AbstractTreeNode}
+  tt = tree_type(eltype(trees))
+  println(io, "$(length(trees))-element $(tt) Tree Vector")
+  if length(trees) > 10
+    for t in trees[1:5]
+      ctx = IOContext(io, :in_forest => true)
+      print(ctx, " ")
+      show(ctx, t)
+      println(ctx)
+    end
+    println(" ⋮")
+    for t in trees[end-4:end]
+      ctx = IOContext(io, :in_forest => true)
+      print(ctx, " ")
+      show(ctx, t)
+      println(ctx)
+    end
+  elseif length(trees) > 10
+    for t in trees[1:end]
+      ctx = IOContext(io, :in_forest => true)
+      print(ctx, " ")
+      show(ctx, t)
+      println(ctx)
+    end
+  else
+
+  end
+end
+
 function Base.display(trees::Vector{<:AbstractDecisionTree{V}}) where {V<:AbstractTreeNode}
   io = stdout
-  tt = tree_type(eltype(trees))
-  println(io, "$(length(trees))-element $(tt) Tree Forest")
-  if length(trees) > 0
-  for t in trees[1:5]
-    ctx = IOContext(io, :in_forest => true)
-    print(ctx, " ")
-    show(ctx, t)
-    println(ctx)
-  end
-  println(" ⋮")
-  for t in trees[end-4:end]
-    ctx = IOContext(io, :in_forest => true)
-    print(ctx, " ")
-    show(ctx, t)
-    println(ctx)
-  end
-  else
-  end
+  display(io, trees)
+end
+
+function Base.show(io::IO, trees::Vector{<:AbstractDecisionTree{V}}) where {V<:AbstractTreeNode}
+  display(io, trees)
+end
+
+function Base.show(trees::Vector{<:AbstractDecisionTree{V}}) where {V<:AbstractTreeNode}
+  io = stdout
+  display(io, trees)
+end
+
+function Base.print(io::IO, trees::Vector{T}) where {T<:AbstractDecisionTree{V}} where {V<:AbstractTreeNode}
+  display(io, trees)
+end
+
+function Base.print(trees::Vector{T}) where {T<:AbstractDecisionTree{V}} where {V<:AbstractTreeNode}
+  io = stdout
+  print(io, trees)
 end
 
 

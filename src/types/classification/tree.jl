@@ -4,7 +4,7 @@ mutable struct ClassificationTree <: AbstractDecisionTree{ClassificationTreeNode
   features::AbstractDataFrame
   targets::CategoricalVector
   nodemap::NodeMap{ClassificationTreeNode}
-  maxdepth::Int
+  max_depth::Int
 end
 
 
@@ -24,8 +24,17 @@ function create_outcome_randomiser(tree::ClassificationTree)
   return random_outcome
 end
 
+"""
+    random_classification_tree(X::AbstractDataFrame, y::CategoricalVector; kwargs...)
 
-function random_classification_tree(X, y; maxdepth=5, probsplit=0.5)
+# Keyword Arguments
+- `max_depth::Int=5`: maximum depth of generated tree.
+- `split_probability::Float64=0.5`: probability of splitting a node into another branch instead of a leaf.
+"""
+function random_classification_tree(X::AbstractDataFrame, y::CategoricalVector; kwargs...)
+  max_depth = get(kwargs, :max_depth, 5)
+  split_probability = get(kwargs, :split_probability, 0.5)
+
   attribute_labels = Dict(pairs(names(X)))
 
   root_attr = rand(1:ncol(X))
@@ -45,7 +54,7 @@ function random_classification_tree(X, y; maxdepth=5, probsplit=0.5)
   push!(children_to_randomise, (parent=root, mask=rightmask, direction=RightChild, parent_index=1))
   push!(children_to_randomise, (parent=root, mask=leftmask, direction=LeftChild, parent_index=1))
 
-  tree = ClassificationTree(root, X, y, NodeMap{ClassificationTreeNode}(1 => (node=root, rowmask=BitVector(ones(nrow(X))), parent=nothing)), maxdepth)
+  tree = ClassificationTree(root, X, y, NodeMap{ClassificationTreeNode}(1 => (node=root, rowmask=BitVector(ones(nrow(X))), parent=nothing)), max_depth)
 
   random_outcome = create_outcome_randomiser(tree)
   random_decision = create_decision_randomiser(tree)
@@ -53,7 +62,7 @@ function random_classification_tree(X, y; maxdepth=5, probsplit=0.5)
   while length(children_to_randomise) > 0
     current_num_nodes += 1
     parent, mask, direction, parent_index = pop!(children_to_randomise)
-    if (nodelevel(parent) == maxdepth - 1) || rand() >= probsplit
+    if (nodelevel(parent) == max_depth - 1) || rand() >= split_probability
       leaf_node = child!(direction, parent, random_outcome(mask))
       tree.nodemap[current_num_nodes] = (node=leaf_node, rowmask=mask, parent=parent_index)
     else
@@ -72,16 +81,23 @@ function random_classification_tree(X, y; maxdepth=5, probsplit=0.5)
 end
 
 
-function random_classification_trees(numtrees, X, y; maxdepth=5, probsplit=0.5)
-  treechan = Channel{Any}(numtrees)
+"""
+    random_classification_tree(generation_size::Int, X::AbstractDataFrame, y::CategoricalVector; kwargs...)
 
-  for i in 1:numtrees
-    t = random_classification_tree(X, y; maxdepth=maxdepth, probsplit=probsplit)
+# Keyword Arguments
+- `max_depth::Int=5`: maximum depth of generated tree.
+- `split_probability::Float64=0.5`: probability of splitting a node into another branch instead of a leaf.
+"""
+function random_classification_trees(generation_size::Int, X::AbstractDataFrame, y::CategoricalVector; kwargs...)
+  treechan = Channel{Any}(generation_size)
+
+  for i in 1:generation_size
+    t = random_classification_tree(X, y; kwargs...)
 
     put!(treechan, t)
   end
 
-  all_trees = [take!(treechan) for i in 1:numtrees]
+  all_trees = [take!(treechan) for i in 1:generation_size]
 
   return all_trees
 end
