@@ -2,9 +2,10 @@ module EvolutionaryDecisionTrees
 
 include("requirements.jl")
 
-include("types/nodes.jl")
-include("types/tree.jl")
-include("types/metrics.jl")
+include("types/global.jl")
+include("types/classification/nodes.jl")
+include("types/classification/tree.jl")
+include("types/classification/metrics.jl")
 
 include("functions/genetics.jl")
 include("functions/plot.jl")
@@ -34,13 +35,13 @@ export
   NodeConstraints,
   NodeMap,
   NodePenalty,
-  OptionalNode,
+  OptionalClassificationNode,
   PenaltyType,
   PlotClassifierTree,
   RefValue,
   RightChild,
   TargetType,
-  TreeNode,
+  AbstractTreeNode,
   attributes,
   attrlabel,
   attrlabels,
@@ -84,8 +85,8 @@ export
   plotclassifiertree!,
   prune,
   prune!,
-  random_tree,
-  random_trees,
+  random_classification_tree,
+  random_classification_trees,
   reset_nodemap!,
   right,
   rightchild!,

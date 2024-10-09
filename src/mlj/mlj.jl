@@ -143,7 +143,7 @@ function MMI.fit(model::DeterministicEvolutionaryDecisionTreeClassifier, verbosi
   if model.seed != -1
     Random.seed!(model.seed)
   end
-  initial_population = random_trees(model.generation_size, X, y; maxdepth=model.max_depth, probsplit=model.split_probability)
+  initial_population = random_classification_trees(model.generation_size, X, y; maxdepth=model.max_depth, probsplit=model.split_probability)
 
   train_config = Dict(
     :generations => model.num_generations,

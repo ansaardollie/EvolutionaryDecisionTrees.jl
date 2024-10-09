@@ -30,11 +30,42 @@ function mutate!(tree::ClassificationTree, node_idx)
     prevattr = isroot(current_node) ? nothing : parent(current_node).attribute
     prevthreshold = isroot(current_node) ? nothing : parent(current_node).threshold
     new_decision = random_decision(current_mask, prevattr=prevattr, prevthreshold=prevthreshold)
-    current_node.attribute = new_decision.attribute
-    current_node.threshold = new_decision.threshold
+
+    left_child = current_node.left[]
+    right_child = current_node.right[]
+
+    left_child.parent[] = nothing
+    right_child.parent[] = nothing
+
+    new_node = branch(ClassificationTreeNode, new_decision.attribute, new_decision.threshold, attribute_labels_dict=current_node.attribute_labels)
+
+    leftchild!(new_node, left_child)
+    rightchild!(new_node, right_child)
+
+    if isroot(current_node)
+      tree.root = new_node
+    else
+      parent_node = current_node.parent[]
+      if isleftchild(current_node)
+        parent_node.left[] = nothing
+        leftchild!(parent_node, new_node)
+      else
+        parent_node.right[] = nothing
+        rightchild!(parent_node, new_node)
+      end
+    end
   else
     new_outcome = random_outcome(current_mask)
-    current_node.outcome = new_outcome
+    new_node = leaf(ClassificationTreeNode, new_outcome, attribute_labels_dict=current_node.attribute_labels)
+    parent_node = current_node.parent[]
+    if isleftchild(current_node)
+      parent_node.left[] = nothing
+      leftchild!(parent_node, new_node)
+    else
+      parent_node.right[] = nothing
+      rightchild!(parent_node, new_node)
+    end
+
   end
   reset_nodemap!(tree)
   return tree

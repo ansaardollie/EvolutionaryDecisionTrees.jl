@@ -126,11 +126,16 @@ function prune!(tree::ClassificationTree; maxdepth::Int=tree.maxdepth)
     original_node_mask = tree.nodemap[original_node_number].rowmask
     if current_node_level + 1 > maxdepth && isbranch(node)
       new_outcome = random_outcome(original_node_mask)
-      node.outcome = new_outcome
-      node.threshold = nothing
-      node.attribute = nothing
-      node.left[] = nothing
-      node.right[] = nothing
+      new_node = leaf(ClassificationTreeNode, new_outcome; attribute_labels_dict=node.attribute_labels)
+
+      parent_node = node.parent[]
+      if isleftchild(node)
+        parent_node.left[] = nothing
+        leftchild!(parent_node, new_node)
+      else
+        parent_node.right[] = nothing
+        rightchild!(parent_node, new_node)
+      end
     elseif isbranch(node)
       process_node(node.left[])
       process_node(node.right[])
