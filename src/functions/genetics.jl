@@ -30,7 +30,7 @@ end
 Mutate `tree` at node with index `node_idx`.
 """
 function mutate!(tree::ClassificationTree, node_idx::Int)
-  random_outcome = create_outcome_randomiser(tree)
+  leaf_prediction = create_prediction_selector(tree)
   random_decision = create_decision_randomiser(tree)
   selected_node_info = tree.nodemap[node_idx]
   current_mask = selected_node_info.rowmask
@@ -64,7 +64,7 @@ function mutate!(tree::ClassificationTree, node_idx::Int)
       end
     end
   else
-    new_outcome = random_outcome(current_mask)
+    new_outcome = leaf_prediction(current_mask)
     new_node = leaf(ClassificationTreeNode, new_outcome, attribute_labels_dict=current_node.attribute_labels)
     parent_node = current_node.parent[]
     if isleftchild(current_node)
@@ -180,7 +180,6 @@ end
 # Keyword Arguments
 - `fitness_function::Any`: appropriate fitness function for the type of decision trees provided, if `nothing` used `fitness_function_type` to create one.
 - `fitness_function_type::Union{ClassificationFitnessType, RegressionFitnessType}`: which fitness metric to evaluate the tree with. 
-- `label_type::ClassificationOutcomeType=LeafLabel`: how outcomes in leaf nodes should be predicted if `eltype(trees)` is `ClassificationTree`.
 - `penalty_type::PenaltyType=DepthPenalty`: what type of penalty is applied to fitness calculation.
 - `penalty_weight::Float64=0.5`: how much weight is assigned to penalty in fitness calculation.
 - `elite_proportion::Float64=0.3`: proportion of top-ranked trees to propogate unchanged into next generation.
@@ -266,7 +265,6 @@ end
 - `max_generations_stagnant::Int=Int(floor(num_generations * 0.2))`: stopping criterion, stop training if best tree's fitness does not improve for this number of generations.
 - `fitness_function::Any`: appropriate fitness function for the type of decision trees provided, if `nothing` used `fitness_function_type` to create one.
 - `fitness_function_type::Union{ClassificationFitnessType, RegressionFitnessType}`: which fitness metric to evaluate the tree with. 
-- `label_type::ClassificationOutcomeType=LeafLabel`: how outcomes in leaf nodes should be predicted if `eltype(trees)` is `ClassificationTree`.
 - `penalty_type::PenaltyType=DepthPenalty`: what type of penalty is applied to fitness calculation.
 - `penalty_weight::Float64=0.5`: how much weight is assigned to penalty in fitness calculation.
 - `elite_proportion::Float64=0.3`: proportion of top-ranked trees to propogate unchanged into next generation.

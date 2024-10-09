@@ -1,5 +1,5 @@
 
-mutable struct DeterministicEvolutionaryDecisionTreeClassifier <: MMI.Deterministic
+mutable struct EvolutionaryDecisionTreeClassifier <: MMI.Deterministic
   generation_size::Int
   num_generations::Int
   max_depth::Int
@@ -9,13 +9,13 @@ mutable struct DeterministicEvolutionaryDecisionTreeClassifier <: MMI.Determinis
   fitness_function::Any
   penalty_type::Type{<:PenaltyType}
   penalty_weight::Float64
-  label_type::Type{<:ClassificationPredictionType}
+  leaf_predictor::Function
   elite_proportion::Float64
   max_generations_stagnant::Int
   seed::Int
 end
 
-function MMI.clean!(model::DeterministicEvolutionaryDecisionTreeClassifier)
+function MMI.clean!(model::EvolutionaryDecisionTreeClassifier)
   warning = ""
 
   if model.generation_size < 1
@@ -62,7 +62,7 @@ function MMI.clean!(model::DeterministicEvolutionaryDecisionTreeClassifier)
 end
 
 
-function DeterministicEvolutionaryDecisionTreeClassifier(;
+function EvolutionaryDecisionTreeClassifier(;
   generation_size::Int=1000,
   num_generations::Int=100,
   max_depth::Int=5,
@@ -73,20 +73,23 @@ function DeterministicEvolutionaryDecisionTreeClassifier(;
   fitness_function::Union{Nothing,Function}=nothing,
   penalty_type::Type{<:PenaltyType}=NodePenalty,
   penalty_weight::Float64=0.05,
-  prediction_type::Type{<:ClassificationPredictionType}=LeafLabel,
+  leaf_prediction_function::Union{Nothing,Function}=nothing,
+  leaf_prediction_type::Type{<:ClassificationPredictionType}=RandomClassPrediction,
   elite_proportion::Float64=0.2,
   max_generations_stagnant::Union{Nothing,Int}=nothing,
   seed::Int=-1
 )
 
   penalty_type <: PenaltyType || error("`penalty_type` = $(penalty_type)` is not a recognised PenatlyType")
-  prediction_type <: ClassificationPredictionType || error("`label_type` = $(prediction_type) is not a recognised ClassificationPredictionType")
+
+  leaf_prediction_type <: ClassificationPredictionType || error("`leaf_prediction_type` = $(leaf_prediction_type) is not a recognised ClassificationPredictionType")
+  leaf_predictor_function = isnothing(leaf_prediction_function) ? leaf_predictor(leaf_prediction_type) : leaf_prediction_function
 
   fitness_function = isnothing(fitness_function) ? fitness_type_function(fitness_function_type) : fitness_function
 
   SMB.is_measure(fitness_function) || error("Fitness metric is not a recognised measure")
 
-  model = DeterministicEvolutionaryDecisionTreeClassifier(
+  model = EvolutionaryDecisionTreeClassifier(
     generation_size,
     num_generations,
     max_depth,
@@ -96,7 +99,7 @@ function DeterministicEvolutionaryDecisionTreeClassifier(;
     fitness_function,
     penalty_type,
     penalty_weight,
-    prediction_type,
+    leaf_predictor_function,
     elite_proportion,
     max_generations_stagnant,
     seed
@@ -109,7 +112,7 @@ function DeterministicEvolutionaryDecisionTreeClassifier(;
   return model
 end
 
-function MMI.reformat(::DeterministicEvolutionaryDecisionTreeClassifier, X, y)
+function MMI.reformat(::EvolutionaryDecisionTreeClassifier, X, y)
   if typeof(X) <: AbstractDataFrame && typeof(y) <: CategoricalVector
     return (X, y)
   elseif typeof(X) <: AbstractDataFrame
@@ -121,7 +124,7 @@ function MMI.reformat(::DeterministicEvolutionaryDecisionTreeClassifier, X, y)
   end
 end
 
-function MMI.reformat(::DeterministicEvolutionaryDecisionTreeClassifier, X)
+function MMI.reformat(::EvolutionaryDecisionTreeClassifier, X)
   if typeof(X) <: AbstractDataFrame
     return (X,)
   else
@@ -129,15 +132,15 @@ function MMI.reformat(::DeterministicEvolutionaryDecisionTreeClassifier, X)
   end
 end
 
-function MMI.selectrows(::DeterministicEvolutionaryDecisionTreeClassifier, I, Xdf, y)
+function MMI.selectrows(::EvolutionaryDecisionTreeClassifier, I, Xdf, y)
   return (view(Xdf, I, :), y[I])
 end
 
-function MMI.selectrows(::DeterministicEvolutionaryDecisionTreeClassifier, I, Xdf)
+function MMI.selectrows(::EvolutionaryDecisionTreeClassifier, I, Xdf)
   return (view(Xdx, I, :),)
 end
 
-function MMI.fit(model::DeterministicEvolutionaryDecisionTreeClassifier, verbosity, X, y)
+function MMI.fit(model::EvolutionaryDecisionTreeClassifier, verbosity, X, y)
 
   if model.seed != -1
     Random.seed!(model.seed)
@@ -150,7 +153,6 @@ function MMI.fit(model::DeterministicEvolutionaryDecisionTreeClassifier, verbosi
     :verbosity => verbosity,
     :fitness_function => model.fitness_function,
     :max_depth => model.max_depth,
-    :label_type => model.label_type,
     :penalty_type => model.penalty_type,
     :penalty_weight => model.penalty_weight,
     :mutation_probability => model.mutation_probability,
@@ -167,7 +169,7 @@ function MMI.fit(model::DeterministicEvolutionaryDecisionTreeClassifier, verbosi
   return (fitresult, cache, report)
 end
 
-function MMI.predict(model::DeterministicEvolutionaryDecisionTreeClassifier, fitresult, Xnew)
+function MMI.predict(model::EvolutionaryDecisionTreeClassifier, fitresult, Xnew)
   if model.label_type == LeafLabel
     return outcome_class_predictions(fitresult[1], Xnew)
   else

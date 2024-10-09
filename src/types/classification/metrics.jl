@@ -31,12 +31,6 @@ end
 SMB.is_measure(m::typeof(markedness)) = true
 SMB.kind_of_proxy(m::typeof(markedness)) = LearnAPI.LiteralTarget()
 
-
-abstract type ClassificationPredictionType end
-
-struct LeafLabel <: ClassificationPredictionType end
-struct LeafDistribution <: ClassificationPredictionType end
-
 abstract type ClassificationFitnessType end
 
 struct BinaryF1ScoreFitness <: ClassificationFitnessType end
@@ -69,11 +63,6 @@ function fitness_type_function(fitness_type::Type{T}) where {T<:ClassificationFi
   end
 end
 
-abstract type PenaltyType end
-
-struct DepthPenalty <: PenaltyType end
-struct NodePenalty <: PenaltyType end
-
 
 """
     fitness(tree::ClassificationTree; kwargs...)
@@ -83,14 +72,13 @@ Compute raw fitness of `tree` without a penalty.
 # Keyword Arguments
 - `fitness_function::Any`: any function that implements `StatisticalMeasuresBase.is_measure()`, if `nothing` uses the `fitness_function_type` to create one.
 - `fitness_function_type::ClassificationFitnessType=InformednessFitness`: which fitness metric to evaluate the tree with. 
-- `label_type::ClassificationOutcomeType=LeafLabel`: how outcomes in leaf nodes should be predicted.
 """
 function fitness(tree::ClassificationTree; kwargs...)
   fitness_function = get(kwargs, :fitness_function, fitness_type_function(get(kwargs, :fitness_function_type, InformednessFitness)))
   SMB.is_measure(fitness_function) || error("Given `fitness_function` is not a valid statistical measure.")
-  label_type = get(kwargs, :label_type, LeafLabel)
 
-  ŷ = label_type == LeafDistribution ? mode.(outcome_probability_predictions(tree)) : outcome_class_predictions(tree)
+
+  ŷ = outcome_predictions(tree)
   y = tree.targets
 
   return fitness_function(ŷ, y)
@@ -104,7 +92,6 @@ Compute fitness of `tree` with a penalty.
 # Keyword Arguments
 - `fitness_function::Any`: any function that implements `StatisticalMeasuresBase.is_measure()`, if `nothing` uses the `fitness_function_type` to create one.
 - `fitness_function_type::ClassificationFitnessType=InformednessFitness`: which fitness metric to evaluate the tree with. 
-- `label_type::ClassificationOutcomeType=LeafLabel`: how outcomes in leaf nodes should be predicted.
 - `penalty_type::PenaltyType=DepthPenalty`: what type of penalty is applied to fitness calculation.
 - `penalty_weight::Float64=0.5`: how much weight is assigned to penalty in fitness calculation.
 - `max_depth::Int=tree.maxdepth`: max depth of tree used for penalty calculation.
@@ -153,14 +140,14 @@ Prune `tree` in place and return pruned tree.
 function prune!(tree::ClassificationTree; kwargs...)
   max_depth = get(kwargs, :max_depth, tree.max_depth)
 
-  random_outcome = create_outcome_randomiser(tree)
+  leaf_prediction = create_prediction_selector(tree)
 
   function process_node(node::ClassificationTreeNode)
     current_node_level = nodelevel(node)
     original_node_number = nodenumber(tree, node)
     original_node_mask = tree.nodemap[original_node_number].rowmask
     if current_node_level + 1 > max_depth && isbranch(node)
-      new_outcome = random_outcome(original_node_mask)
+      new_outcome = leaf_prediction(original_node_mask)
       new_node = leaf(ClassificationTreeNode, new_outcome; attribute_labels_dict=node.attribute_labels)
 
       parent_node = node.parent[]
@@ -191,7 +178,6 @@ Evaluate the fitness of each tree in `trees` and returns vector of `FitnessValue
 # Keyword Arguments
 - `fitness_function::Any`: any function that implements `StatisticalMeasuresBase.is_measure()`, if `nothing` uses the `fitness_function_type` to create one.
 - `fitness_function_type::ClassificationFitnessType=InformednessFitness`: which fitness metric to evaluate the tree with. 
-- `label_type::ClassificationOutcomeType=LeafLabel`: how outcomes in leaf nodes should be predicted.
 - `penalty_type::PenaltyType=DepthPenalty`: what type of penalty is applied to fitness calculation.
 - `penalty_weight::Float64=0.5`: how much weight is assigned to penalty in fitness calculation.
 - `max_depth::Int`: max depth of tree used for penalty calculation, defaults to the tree's `max_depth`.

@@ -14,7 +14,7 @@ abstract type RegressionPredictionType end
 struct MeanPrediction <: RegressionPredictionType end
 struct MedianPrediction <: RegressionPredictionType end
 struct MidpointPrediction <: RegressionPredictionType end
-struct RandomPrediction <: RegressionPredictionType end
+struct RandomValuePrediction <: RegressionPredictionType end
 
 function leaf_predictor(T::Type{<:RegressionPredictionType})
   if T <: MeanPrediction
@@ -23,10 +23,10 @@ function leaf_predictor(T::Type{<:RegressionPredictionType})
     return (target_subset, feature_subset) -> median(target_subset)
   elseif T <: MidpointPrediction
     return (target_subset, feature_subset) -> 0.5 * (minimum(target_subset) + maximum(target_subset))
-  elseif T <: RandomPrediction
+  elseif T <: RandomValuePrediction
     return (target_subset, feature_subset) -> rand(target_subset)
   else
-    error("LeafPredictionType $(T) not recognised")
+    error("RegressionPredictionType $(T) not recognised")
   end
 end
 
@@ -53,7 +53,7 @@ end
 - `split_probability::Float64=0.5`: probability of splitting a node into another branch instead of a leaf.
 - `leaf_prediction_function::Union{Nothing, Function}=nothing`: function that computes the prediction for leaf 
 based on the subset of `y` and `X` that ends up in that leaf, if `nothing` uses `leaf_prediction_type` to determine the function.
-- `leaf_prediction_type::Type{<:LeafPredictionType}=MeanPrediction`: the type of leaf prediction to use.
+- `leaf_prediction_type::Type{<:RegressionPredictionType}=MeanPrediction`: the type of leaf prediction to use.
 """
 function random_regression_tree(X::AbstractDataFrame, y::AbstractVector{Float64}; kwargs...)
   max_depth = get(kwargs, :max_depth, 5)

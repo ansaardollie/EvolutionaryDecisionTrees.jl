@@ -2,6 +2,13 @@ const RefValue = Base.RefValue
 const LabelDict = Dict{Int,String}
 const ConstraintDict = Dict{Int,@NamedTuple{lower_bound::Union{Nothing,Float64}, upper_bound::Union{Nothing,Float64}, closed_lower::Bool, closed_upper::Bool}}
 
+
+abstract type PenaltyType end
+
+struct DepthPenalty <: PenaltyType end
+struct NodePenalty <: PenaltyType end
+
+
 abstract type ChildDirection end
 
 struct LeftChild <: ChildDirection end
@@ -298,7 +305,8 @@ function Base.copy(tree::AbstractDecisionTree{V}) where {V<:AbstractTreeNode}
     tree.features,
     tree.targets,
     new_nodemap,
-    tree.max_depth
+    tree.max_depth,
+    tree.leaf_predictor
   ) : RegressionTree(
     root_copy,
     tree.features,

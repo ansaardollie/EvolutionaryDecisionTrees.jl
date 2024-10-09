@@ -81,10 +81,11 @@ function EvolutionaryDecisionTreeRegressor(;
 )
 
   penalty_type <: PenaltyType || error("`penalty_type` = $(penalty_type)` is not a recognised PenatlyType")
+
   leaf_prediction_type <: RegressionPredictionType || error("`leaf_prediction_type` = $(leaf_prediction_type) is not a recognised RegressionPredictionType")
+  leaf_predictor_function = isnothing(leaf_prediction_function) ? leaf_predictor(leaf_prediction_type) : leaf_prediction_function
 
   fitness_function = isnothing(fitness_function) ? fitness_type_function(fitness_function_type) : fitness_function
-  leaf_predictor_function = isnothing(leaf_prediction_function) ? leaf_predictor(leaf_prediction_type) : leaf_prediction_function
 
   model = EvolutionaryDecisionTreeRegressor(
     generation_size,
