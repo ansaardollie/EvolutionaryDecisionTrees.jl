@@ -13,3 +13,5 @@ end
 
 const OptionalRegressionNode = Union{Nothing,RegressionTreeNode}
 
+outcomelabel(node::RegressionTreeNode) = "$(node.outcome)"
+

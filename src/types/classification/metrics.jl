@@ -37,32 +37,32 @@ abstract type TargetType end
 struct LeafLabel <: TargetType end
 struct LeafDistribution <: TargetType end
 
-abstract type FitnessMetric end
+abstract type ClassificationFitnessMetric end
 
-struct BinaryF1ScoreFitness <: FitnessMetric end
-struct MultiF1ScoreFitness <: FitnessMetric end
-struct AccuracyFitness <: FitnessMetric end
-struct BalancedAccuracyFitness <: FitnessMetric end
-struct MatthewsCorrelationFitness <: FitnessMetric end
-struct InformednessFitness <: FitnessMetric end
-struct MarkednessFitness <: FitnessMetric end
+struct BinaryF1ScoreFitness <: ClassificationFitnessMetric end
+struct MultiF1ScoreFitness <: ClassificationFitnessMetric end
+struct AccuracyFitness <: ClassificationFitnessMetric end
+struct BalancedAccuracyFitness <: ClassificationFitnessMetric end
+struct MatthewsCorrelationFitness <: ClassificationFitnessMetric end
+struct InformednessFitness <: ClassificationFitnessMetric end
+struct MarkednessFitness <: ClassificationFitnessMetric end
 
-function metric_function(metric_type::DataType)
-  metric_type <: FitnessMetric || error("`metric_type` = `$(metric_type)` is not a recognised FitnessMetric.")
+function fitness_function(metric_type::Type{T}) where {T<:ClassificationFitnessMetric}
+  T <: ClassificationFitnessMetric || error("`metric_type` = `$(metric_type)` is not a recognised ClassificationFitnessMetric.")
 
-  if metric_type == BinaryF1ScoreFitness
+  if T == BinaryF1ScoreFitness
     return SM.FScore()
-  elseif metric_type == MultiF1ScoreFitness
+  elseif T == MultiF1ScoreFitness
     return SM.MulticlassFScore()
-  elseif metric_type == AccuracyFitness
+  elseif T == AccuracyFitness
     return SM.Accuracy()
-  elseif metric_type == BalancedAccuracyFitness
+  elseif T == BalancedAccuracyFitness
     return SM.BalancedAccuracy()
-  elseif metric_type == MatthewsCorrelationFitness
+  elseif T == MatthewsCorrelationFitness
     return SM.MatthewsCorrelation()
-  elseif metric_type == InformednessFitness
+  elseif T == InformednessFitness
     return informedness
-  elseif metric_type == MarkednessFitness
+  elseif T == MarkednessFitness
     return markedness
   else
     error("`metric_type` = `$(metric_type)` not recognised")
@@ -76,7 +76,7 @@ struct NodePenalty <: PenaltyType end
 
 
 function fitness(tree::ClassificationTree; kwargs...)
-  metric = get(kwargs, :metric, metric_function(get(kwargs, :metric_type, InformednessFitness)))
+  metric = get(kwargs, :metric, fitness_function(get(kwargs, :metric_type, InformednessFitness)))
   SMB.is_measure(metric) || error("Given metric is not a valid statistical measure.")
   target = get(kwargs, :target, LeafLabel)
   ŷ = target == LeafDistribution ? mode.(outcome_probability_predictions(tree)) : outcome_class_predictions(tree)
@@ -103,21 +103,19 @@ function penalised_fitness(tree::ClassificationTree; kwargs...)
   penalty_weight = get(kwargs, :penalty_weight, 0.05)
   maxdepth = get(kwargs, :maxdepth, tree.maxdepth)
   fv = fitness(tree; kwargs)
-  raw_penalty = fv - penalty_weight * (penalty == DepthPenalty ? (AT.treeheight(tree) / maxdepth) : (length(keys(tree.nodemap)) / 2^(maxdepth)))
+  raw_penalised_fitness = fv - penalty_weight * (penalty == DepthPenalty ? (AT.treeheight(tree) / maxdepth) : (length(keys(tree.nodemap)) / 2^(maxdepth)))
 
-  return 1 / (1 + exp(-1 * raw_penalty))
+  return 1 / (1 + exp(-1 * raw_penalised_fitness))
 end
 
 
 
 function prune(tree::ClassificationTree; maxdepth::Int=tree.maxdepth)
   tcopy = copy(tree)
-  return prune!(tcopy)
+  return prune!(tcopy, maxdepth=maxdepth)
 end
 
 function prune!(tree::ClassificationTree; maxdepth::Int=tree.maxdepth)
-  random_outcome = create_outcome_randomiser(tree)
-
   random_outcome = create_outcome_randomiser(tree)
 
   function process_node(node::ClassificationTreeNode)
@@ -153,7 +151,7 @@ function evaluate_fitness(trees::Vector{ClassificationTree}; kwargs...)
   penalty = get(kwargs, :penalty, DepthPenalty)
   penalty_weight = get(kwargs, :penalty_weight, 0.05)
   maxdepth = get(kwargs, :maxdepth, trees[1].maxdepth)
-  metricfunc = get(kwargs, :metric, metric_function(get(kwargs, :metric_type, InformednessFitness)))
+  metricfunc = get(kwargs, :metric, fitness_function(get(kwargs, :metric_type, InformednessFitness)))
 
 
   n = length(trees)

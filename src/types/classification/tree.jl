@@ -24,40 +24,6 @@ function create_outcome_randomiser(tree::ClassificationTree)
   return random_outcome
 end
 
-function create_attribute_randomiser(tree::ClassificationTree)
-  function random_attribute()
-    attrindices = 1:ncol(tree.features)
-    return rand(attrindices)
-  end
-  return random_attribute
-end
-
-function create_decision_randomiser(tree::ClassificationTree)
-  random_attribute = create_attribute_randomiser(tree)
-  X = tree.features
-  function random_decision(mask::Union{Nothing,BitArray{1}}; prevattr::Union{Nothing,Int}=nothing, prevthreshold::Union{Nothing,Float64}=nothing)
-    attribute = random_attribute()
-    indices = isnothing(mask) ? BitVector(repeat([1], nrow(X))) : mask
-    available_thresholds = @view X[indices, attribute]
-    if length(available_thresholds) == 0
-      attribute = prevattr
-      threshold = prevthreshold
-    else
-      threshold = rand(available_thresholds)
-    end
-    left_split_indices = ((@view X[!, attribute]) .< threshold)
-    right_split_indices = .!left_split_indices
-    leftmask = indices .& left_split_indices
-    rightmask = indices .& right_split_indices
-    return (
-      attribute=attribute,
-      threshold=threshold,
-      leftmask=leftmask,
-      rightmask=rightmask
-    )
-  end
-  return random_decision
-end
 
 function random_classification_tree(X, y; maxdepth=5, probsplit=0.5)
   attribute_labels = Dict(pairs(names(X)))

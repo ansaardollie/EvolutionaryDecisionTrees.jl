@@ -223,6 +223,52 @@ function tree_type(tree::T) where {T<:AbstractDecisionTree}
   end
 end
 
+function tree_type(::Type{T}) where {T<:AbstractDecisionTree}
+  if T <: ClassificationTree
+    return "Classification"
+  else
+    return "Regression"
+  end
+end
+
+
+function create_attribute_randomiser(tree::T) where {T<:AbstractDecisionTree}
+  function random_attribute()
+    attrindices = 1:ncol(tree.features)
+    return rand(attrindices)
+  end
+  return random_attribute
+end
+
+
+function create_decision_randomiser(tree::T) where {T<:AbstractDecisionTree}
+  random_attribute = create_attribute_randomiser(tree)
+  X = tree.features
+  function random_decision(mask::Union{Nothing,BitArray{1}}; prevattr::Union{Nothing,Int}=nothing, prevthreshold::Union{Nothing,Float64}=nothing)
+    attribute = random_attribute()
+    indices = isnothing(mask) ? BitVector(repeat([1], nrow(X))) : mask
+    available_thresholds = @view X[indices, attribute]
+    if length(available_thresholds) == 0
+      attribute = prevattr
+      threshold = prevthreshold
+    else
+      threshold = rand(available_thresholds)
+    end
+    left_split_indices = ((@view X[!, attribute]) .< threshold)
+    right_split_indices = .!left_split_indices
+    leftmask = indices .& left_split_indices
+    rightmask = indices .& right_split_indices
+    return (
+      attribute=attribute,
+      threshold=threshold,
+      leftmask=leftmask,
+      rightmask=rightmask
+    )
+  end
+  return random_decision
+end
+
+
 const NodeMapDetails{T<:AbstractTreeNode} = @NamedTuple begin
   node::T
   rowmask::BitVector
@@ -245,13 +291,22 @@ function Base.copy(tree::AbstractDecisionTree{V}) where {V<:AbstractTreeNode}
     end
   end
   process_node(root_copy)
-  return ClassificationTree(
+  new_tree = V <: ClassificationTreeNode ? ClassificationTree(
     root_copy,
     tree.features,
     tree.targets,
     new_nodemap,
     tree.maxdepth
+  ) : RegressionTree(
+    root_copy,
+    tree.features,
+    tree.targets,
+    new_nodemap,
+    tree.maxdepth,
+    tree.leafpredictor
   )
+  reset_nodemap!(new_tree)
+  return new_tree
 end
 
 
@@ -259,7 +314,7 @@ function reset_nodemap!(tree::AbstractDecisionTree{V}) where {V<:AbstractTreeNod
   new_nodemap = NodeMap{V}()
 
   current_num_nodes_processed = 0
-  function process_node(node::V; prev_mask::BitVector, parent_idx::Union{Int,Nothing}=nothing)
+  function process_node(node::V, prev_mask::BitVector, parent_idx::Union{Int,Nothing}=nothing)
     current_num_nodes_processed += 1
     if !isroot(node)
       parent_attr = parent(node).attribute
@@ -274,12 +329,12 @@ function reset_nodemap!(tree::AbstractDecisionTree{V}) where {V<:AbstractTreeNod
     new_nodemap[current_num_nodes_processed] = (node=node, rowmask=current_mask, parent=parent_idx)
 
     if isbranch(node)
-      process_node(node.left[]; prev_mask=current_mask, parent_idx=current_num_nodes_processed)
-      process_node(node.right[]; prev_mask=current_mask, parent_idx=current_num_nodes_processed)
+      process_node(node.left[], current_mask, current_num_nodes_processed)
+      process_node(node.right[], current_mask, current_num_nodes_processed)
     end
   end
 
-  process_node(tree.root; prev_mask=BitVector(ones(length(tree.targets))), parent_idx=nothing)
+  process_node(tree.root, BitVector(ones(length(tree.targets))), nothing)
 
   empty!(tree.nodemap)
 
@@ -289,6 +344,7 @@ function reset_nodemap!(tree::AbstractDecisionTree{V}) where {V<:AbstractTreeNod
 
   return tree
 end
+
 
 
 attributes(tree::AbstractDecisionTree) = Symbol.(names(tree.features))
@@ -450,7 +506,9 @@ function Base.show(io::IO, tree::AbstractDecisionTree{V}; without_constraints::B
     constraint_generator = create_constraints_generator(tree)
     function node_constraint_printer(io::IO, node::V; kw2...)
       decimals = get(kw, :decimals, 3)
-      print(io, isbranch(node) ? "$(attrlabel(node)) < $(round(node.threshold, digits=decimals))" : node)
+      nn = nodenumber(tree, node)
+      print(io, "#$nn: ")
+      print(io, (isbranch(node) ? "$(attrlabel(node)) < $(round(node.threshold, digits=decimals))" : node))
       if isbranch(node) && !(isroot(node))
         nodetype = nothing
         print(io, " | ")
@@ -486,8 +544,9 @@ end
 
 function Base.display(trees::Vector{<:AbstractDecisionTree{V}}) where {V<:AbstractTreeNode}
   io = stdout
-  tt = tree_type(trees[1])
+  tt = tree_type(eltype(trees))
   println(io, "$(length(trees))-element $(tt) Tree Forest")
+  if length(trees) > 0
   for t in trees[1:5]
     ctx = IOContext(io, :in_forest => true)
     print(ctx, " ")
@@ -500,6 +559,8 @@ function Base.display(trees::Vector{<:AbstractDecisionTree{V}}) where {V<:Abstra
     print(ctx, " ")
     show(ctx, t)
     println(ctx)
+  end
+  else
   end
 end
 

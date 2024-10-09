@@ -83,7 +83,7 @@ function DeterministicEvolutionaryDecisionTreeClassifier(;
   penalty_type <: PenaltyType || error("`penalty_type` = $(penalty_type)` is not a recognised PenatlyType")
   label_type <: TargetType || error("`label_type` = $(label_type) is not a recognised TargetType")
 
-  fitness_metric = isnothing(fitness_metric) ? metric_function(fitness_metric_type) : fitness_metric
+  fitness_metric = isnothing(fitness_metric) ? fitness_function(fitness_metric_type) : fitness_metric
 
   SMB.is_measure(fitness_metric) || error("Fitness metric is not a recognised measure")
 

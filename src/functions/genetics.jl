@@ -1,10 +1,14 @@
-function crossover(t1::ClassificationTree, t2::ClassificationTree; p1::Union{Int,Nothing}=nothing, p2::Union{Int,Nothing}=nothing)
+function crossover(t1::AbstractDecisionTree, t2::AbstractDecisionTree; p1::Union{Int,Nothing}=nothing, p2::Union{Int,Nothing}=nothing)
   mother = copy(t1)
   father = copy(t2)
   m_crossover_idx = isnothing(p1) ? rand(filter(k -> k != 1, keys(mother.nodemap))) : p1
+
   f_crossover_idx = isnothing(p2) ? rand(filter(k -> k != 1, keys(father.nodemap))) : p2
+
   m_crossover_node = mother.nodemap[m_crossover_idx].node
+
   f_crossover_node = father.nodemap[f_crossover_idx].node
+
   if isleftchild(m_crossover_node)
     m_crossover_node.parent[].left[] = nothing
     f_crossover_node.parent[] = nothing
@@ -71,6 +75,48 @@ function mutate!(tree::ClassificationTree, node_idx)
   return tree
 end
 
+
+function mutate!(tree::RegressionTree, node_idx)
+  random_decision = create_decision_randomiser(tree)
+  selected_node_info = tree.nodemap[node_idx]
+  current_mask = selected_node_info.rowmask
+  current_node = selected_node_info.node
+  if isbranch(current_node)
+    prevattr = isroot(current_node) ? nothing : parent(current_node).attribute
+    prevthreshold = isroot(current_node) ? nothing : parent(current_node).threshold
+    new_decision = random_decision(current_mask, prevattr=prevattr, prevthreshold=prevthreshold)
+
+    left_child = current_node.left[]
+    right_child = current_node.right[]
+
+    left_child.parent[] = nothing
+    right_child.parent[] = nothing
+
+    new_node = branch(RegressionTreeNode, new_decision.attribute, new_decision.threshold, attribute_labels_dict=current_node.attribute_labels)
+
+    leftchild!(new_node, left_child)
+    rightchild!(new_node, right_child)
+
+    if isroot(current_node)
+      tree.root = new_node
+    else
+      parent_node = current_node.parent[]
+      if isleftchild(current_node)
+        parent_node.left[] = nothing
+        leftchild!(parent_node, new_node)
+      else
+        parent_node.right[] = nothing
+        rightchild!(parent_node, new_node)
+      end
+    end
+  else
+    error("Cannot mutate leaf node in RegressionTree")
+  end
+  reset_nodemap!(tree)
+  return tree
+end
+
+
 function mutate!(tree::ClassificationTree; num_mutations::Int=1, probmutation=0.4)
   total_num_mutations = 0
 
@@ -85,16 +131,28 @@ function mutate!(tree::ClassificationTree; num_mutations::Int=1, probmutation=0.
   return tree
 end
 
+
+function mutate!(tree::RegressionTree; num_mutations::Int=1, probmutation=0.4)
+  total_num_mutations = 0
+
+  available_node_indices = collect(keys(filter(x -> !(isroot(x[2].node)) && isbranch(x[2].node), tree.nodemap)))
+  while length(available_node_indices) > 0 && total_num_mutations < num_mutations
+    selected_node_idx = rand(available_node_indices)
+    if rand() < probmutation
+      total_num_mutations += 1
+      mutate!(tree, selected_node_idx)
+    end
+  end
+
+  return tree
+end
+
+
 function evolve(
-  trees::Vector{ClassificationTree};
+  trees::Vector{T};
   kwargs...
-)
-  metric_type = get(kwargs, :metric_type, InformednessFitness)
-  metric = get(kwargs, :metric, metric_function(metric_type))
+) where {T<:AbstractDecisionTree}
   maxdepth = get(kwargs, :maxdepth, trees[1].maxdepth)
-  target = get(kwargs, :target, LeafLabel)
-  penalty = get(kwargs, :penalty, DepthPenalty)
-  penalty_weight = get(kwargs, :penalty_weight, 0.05)
   probmutation = get(kwargs, :probmutation, 0.4)
   num_mutations = get(kwargs, :num_mutations, 1)
   eliteprop = get(kwargs, :eliteprop, 0.3)
@@ -104,7 +162,7 @@ function evolve(
   end
 
   N = length(trees)
-  new_populaton = Vector{ClassificationTree}()
+  new_populaton = T[]
 
   fitnesses = evaluate_fitness(trees; kwargs...)
 
@@ -155,10 +213,10 @@ end
 
 
 function train(
-  trees::Vector{ClassificationTree};
-  generations::Int=100,
+  trees::Vector{T};
   kwargs...
-)
+) where {T<:AbstractDecisionTree}
+  generations = get(kwargs, :generations, 200)
   max_generations_stagnant = get(kwargs, :max_generations_stagnant, Int(floor(generations * 0.2)))
   verbosity = get(kwargs, :verbosity, 1)
 
