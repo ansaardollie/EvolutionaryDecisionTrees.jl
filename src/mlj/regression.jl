@@ -77,8 +77,7 @@ function EvolutionaryDecisionTreeRegressor(;
   leaf_prediction_type::Type{<:RegressionPredictionType}=MeanPrediction,
   elite_proportion::Float64=0.2,
   max_generations_stagnant::Union{Nothing,Int}=nothing,
-  seed::Int=-1
-)
+  seed::Int=-1)
 
   penalty_type <: PenaltyType || error("`penalty_type` = $(penalty_type)` is not a recognised PenatlyType")
 
@@ -134,6 +133,21 @@ function MMI.selectrows(::EvolutionaryDecisionTreeRegressor, I, Xdf)
   return (view(Xdx, I, :),)
 end
 
+function train_configuration(model::EvolutionaryDecisionTreeRegressor, verbosity)
+  return Dict(
+    :num_generations => model.num_generations,
+    :max_generations_stagnant => model.max_generations_stagnant,
+    :verbosity => verbosity,
+    :fitness_function => model.fitness_function,
+    :max_depth => model.max_depth,
+    :penalty_type => model.penalty_type,
+    :penalty_weight => model.penalty_weight,
+    :mutation_probability => model.mutation_probability,
+    :num_mutations => model.num_mutations,
+    :elite_propprtion => model.elite_proportion
+  )
+end
+
 function MMI.fit(model::EvolutionaryDecisionTreeRegressor, verbosity, X, y)
 
   if model.seed != -1
@@ -148,26 +162,44 @@ function MMI.fit(model::EvolutionaryDecisionTreeRegressor, verbosity, X, y)
     split_probability=model.split_probability
   )
 
-  train_config = Dict(
-    :num_generations => model.num_generations,
-    :max_generations_stagnant => model.max_generations_stagnant,
-    :verbosity => verbosity,
-    :fitness_function => model.fitness_function,
-    :max_depth => model.max_depth,
-    :penalty_type => model.penalty_type,
-    :penalty_weight => model.penalty_weight,
-    :mutation_probability => model.mutation_probability,
-    :num_mutations => model.num_mutations,
-    :elite_propprtion => model.elite_proportion
-  )
+  train_config = train_configuration(model, verbosity)
 
   out = train(initial_population; train_config...)
 
+
   fitresult = (out.best_tree,)
-  cache = (out.final_population,)
-  report = (out.best_tree_history, out.fitness_history)
+  cache = (out.final_population, out.generations_trained, out.fitness_history[1:end-1], out.best_tree_history[1:end-1])
+  report = (out.best_tree_history, out.fitness_history, out.generations_trained)
 
   return (fitresult, cache, report)
+end
+
+
+function MMI.training_losses(model::EvolutionaryDecisionTreeRegressor, report)
+  return -1 * map(fv -> fv.raw, report[2])
+end
+
+function MMI.update(model::EvolutionaryDecisionTreeRegressor, verbosity, old_fitresult, old_cache, X, y)
+
+  initial_population, initial_generations_trained, previous_fitness_history, previous_tree_history = old_cache
+
+  generations_to_train = model.num_generations - initial_generations_trained
+
+  train_config = train_configuration(model, verbosity)
+  train_config[:num_generations] = generations_to_train
+
+  out = train(initial_population; train_config...)
+
+  fitness_history = [previous_fitness_history..., out.fitness_history...]
+  tree_history = [previous_tree_history..., out.best_tree_history...]
+  total_generations_trained = out.generations_trained + initial_generations_trained
+
+  fitresult = (out.best_tree,)
+  cache = (out.final_population, total_generations_trained, fitness_history[1:end-1], tree_history[1:end-1])
+  report = (tree_history, fitness_history, total_generations_trained)
+
+  return (fitresult, cache, report)
+
 end
 
 function MMI.predict(model::EvolutionaryDecisionTreeRegressor, fitresult, Xnew)

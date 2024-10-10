@@ -378,6 +378,7 @@ function train(
     best_tree=final_best_tree,
     fitness_history=fitness_history,
     best_tree_history=best_tree_history,
-    final_population=current_population
+    final_population=current_population,
+    generations_trained=num_generations_evolved
   )
 end
