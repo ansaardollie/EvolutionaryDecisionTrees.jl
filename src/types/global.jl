@@ -642,3 +642,8 @@ function create_nodemap(tree::AbstractDecisionTree{V}, Xnew::AbstractDataFrame) 
 
   return new_nodemap
 end
+
+
+abstract type AbstractDecisionForest{T<:AbstractDecisionTree} end
+
+

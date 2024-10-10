@@ -193,10 +193,6 @@ function evolve(trees::Vector{T}; kwargs...) where {T<:AbstractDecisionTree}
   mutation_probability = get(kwargs, :mutation_probability, 0.4)
   num_mutations = get(kwargs, :num_mutations, 1)
   elite_proportion = get(kwargs, :elite_proportion, 0.3)
-  seed = get(kwargs, :seed, nothing)
-  if !isnothing(seed)
-    Random.seed!(seed)
-  end
 
   N = length(trees)
   new_populaton = T[]
@@ -273,10 +269,7 @@ end
 - `max_depth::Int`: max depth of tree used for penalty calculation, defaults to the tree's `max_depth`.
 
 """
-function train(
-  trees::Vector{T};
-  kwargs...
-) where {T<:AbstractDecisionTree}
+function train(trees::Vector{T}; kwargs...) where {T<:AbstractDecisionTree}
   num_generations = get(kwargs, :num_generations, 200)
   max_generations_stagnant = get(kwargs, :max_generations_stagnant, Int(floor(num_generations * 0.2)))
   verbosity = get(kwargs, :verbosity, 1)
@@ -382,3 +375,4 @@ function train(
     generations_trained=num_generations_evolved
   )
 end
+
